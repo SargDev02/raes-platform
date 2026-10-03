@@ -85,3 +85,38 @@ export async function POST(request: Request) {
     );
   }
 }
+
+export async function GET() {
+  try {
+    const { data, error } = await supabase
+      .from("institutions")
+      .select("*")
+      .order("created_at", { ascending: false });
+
+    if (error) {
+      console.error("Error fetching institutions:", error);
+
+      return NextResponse.json(
+        {
+          error: "DATABASE_ERROR",
+          message: "No fue posible consultar las instituciones",
+        },
+        { status: 500 },
+      );
+    }
+
+    return NextResponse.json({
+      data,
+    });
+  } catch (error) {
+    console.error("Unexpected error:", error);
+
+    return NextResponse.json(
+      {
+        error: "INTERNAL_SERVER_ERROR",
+        message: "Ocurrió un error inesperado",
+      },
+      { status: 500 },
+    );
+  }
+}
