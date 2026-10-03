@@ -572,7 +572,146 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
-      [_ in never]: never
+      create_credential: {
+        Args: {
+          p_credential_number?: string
+          p_credential_type_id: string
+          p_description?: string
+          p_document_hash_sha256?: string
+          p_external_reference?: string
+          p_institution_id: string
+          p_issued_at: string
+          p_metadata?: Json
+          p_person_id: string
+          p_program_id?: string
+          p_registered_by_api_client_id?: string
+          p_registered_by_reference?: string
+          p_source_type?: Database["public"]["Enums"]["credential_source_type"]
+          p_title: string
+          p_valid_from?: string
+          p_valid_until?: string
+        }
+        Returns: {
+          created_at: string
+          credential_number: string | null
+          credential_type_id: string
+          description: string | null
+          document_hash_sha256: string | null
+          external_reference: string | null
+          id: string
+          import_batch_id: string | null
+          institution_id: string
+          issued_at: string
+          metadata: Json
+          person_id: string
+          program_id: string | null
+          registered_at_raes: string
+          registered_by_api_client_id: string | null
+          registered_by_reference: string | null
+          revocation_reason: string | null
+          revoked_at: string | null
+          source_type: Database["public"]["Enums"]["credential_source_type"]
+          status: Database["public"]["Enums"]["credential_status"]
+          title: string
+          updated_at: string
+          valid_from: string | null
+          valid_until: string | null
+          void_reason: string | null
+          voided_at: string | null
+        }
+        SetofOptions: {
+          from: "*"
+          to: "credentials"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
+      revoke_credential: {
+        Args: {
+          p_actor_reference?: string
+          p_actor_type: string
+          p_api_client_id?: string
+          p_credential_id: string
+          p_reason: string
+        }
+        Returns: {
+          created_at: string
+          credential_number: string | null
+          credential_type_id: string
+          description: string | null
+          document_hash_sha256: string | null
+          external_reference: string | null
+          id: string
+          import_batch_id: string | null
+          institution_id: string
+          issued_at: string
+          metadata: Json
+          person_id: string
+          program_id: string | null
+          registered_at_raes: string
+          registered_by_api_client_id: string | null
+          registered_by_reference: string | null
+          revocation_reason: string | null
+          revoked_at: string | null
+          source_type: Database["public"]["Enums"]["credential_source_type"]
+          status: Database["public"]["Enums"]["credential_status"]
+          title: string
+          updated_at: string
+          valid_from: string | null
+          valid_until: string | null
+          void_reason: string | null
+          voided_at: string | null
+        }
+        SetofOptions: {
+          from: "*"
+          to: "credentials"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
+      void_credential: {
+        Args: {
+          p_actor_reference?: string
+          p_actor_type: string
+          p_api_client_id?: string
+          p_credential_id: string
+          p_reason: string
+        }
+        Returns: {
+          created_at: string
+          credential_number: string | null
+          credential_type_id: string
+          description: string | null
+          document_hash_sha256: string | null
+          external_reference: string | null
+          id: string
+          import_batch_id: string | null
+          institution_id: string
+          issued_at: string
+          metadata: Json
+          person_id: string
+          program_id: string | null
+          registered_at_raes: string
+          registered_by_api_client_id: string | null
+          registered_by_reference: string | null
+          revocation_reason: string | null
+          revoked_at: string | null
+          source_type: Database["public"]["Enums"]["credential_source_type"]
+          status: Database["public"]["Enums"]["credential_status"]
+          title: string
+          updated_at: string
+          valid_from: string | null
+          valid_until: string | null
+          void_reason: string | null
+          voided_at: string | null
+        }
+        SetofOptions: {
+          from: "*"
+          to: "credentials"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
     }
     Enums: {
       api_client_status: "ACTIVE" | "SUSPENDED" | "REVOKED"
