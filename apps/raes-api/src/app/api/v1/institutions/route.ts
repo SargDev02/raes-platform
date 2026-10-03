@@ -46,16 +46,26 @@ export async function POST(request: Request) {
       .single();
 
     if (error) {
-      console.error("Error creating institution:", error);
+  console.error("Error creating institution:", error);
 
-      return NextResponse.json(
-        {
-          error: "DATABASE_ERROR",
-          message: "No fue posible registrar la institución",
-        },
-        { status: 500 },
-      );
-    }
+  if (error.code === "23505") {
+    return NextResponse.json(
+      {
+        error: "INSTITUTION_ALREADY_EXISTS",
+        message: "Ya existe una institución registrada con este NIT",
+      },
+      { status: 409 },
+    );
+  }
+
+  return NextResponse.json(
+    {
+      error: "DATABASE_ERROR",
+      message: "No fue posible registrar la institución",
+    },
+    { status: 500 },
+  );
+}
 
     return NextResponse.json(
       {
