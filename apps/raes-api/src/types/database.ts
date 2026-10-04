@@ -16,10 +16,11 @@ export type Database = {
     Tables: {
       api_clients: {
         Row: {
+          client_type: Database["public"]["Enums"]["api_client_type"]
           created_at: string
           expires_at: string | null
           id: string
-          institution_id: string
+          institution_id: string | null
           key_hash: string
           key_prefix: string
           last_used_at: string | null
@@ -31,10 +32,11 @@ export type Database = {
           updated_at: string
         }
         Insert: {
+          client_type?: Database["public"]["Enums"]["api_client_type"]
           created_at?: string
           expires_at?: string | null
           id?: string
-          institution_id: string
+          institution_id?: string | null
           key_hash: string
           key_prefix: string
           last_used_at?: string | null
@@ -46,10 +48,11 @@ export type Database = {
           updated_at?: string
         }
         Update: {
+          client_type?: Database["public"]["Enums"]["api_client_type"]
           created_at?: string
           expires_at?: string | null
           id?: string
-          institution_id?: string
+          institution_id?: string | null
           key_hash?: string
           key_prefix?: string
           last_used_at?: string | null
@@ -626,6 +629,45 @@ export type Database = {
           isSetofReturn: false
         }
       }
+      manage_core_resource: {
+        Args: {
+          p_data: Json
+          p_id?: string
+          p_operation: string
+          p_resource: string
+        }
+        Returns: Json
+      }
+      process_credential_import: {
+        Args: { p_api_client_id: string; p_batch_id: string; p_records: Json }
+        Returns: Json
+      }
+      resolve_person: {
+        Args: {
+          p_birth_date?: string
+          p_document_number: string
+          p_document_type: string
+          p_first_names: string
+          p_last_names: string
+        }
+        Returns: {
+          birth_date: string | null
+          created_at: string
+          document_number: string
+          document_type: string
+          first_names: string
+          id: string
+          last_names: string
+          metadata: Json
+          updated_at: string
+        }
+        SetofOptions: {
+          from: "*"
+          to: "persons"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
       revoke_credential: {
         Args: {
           p_actor_reference?: string
@@ -715,6 +757,7 @@ export type Database = {
     }
     Enums: {
       api_client_status: "ACTIVE" | "SUSPENDED" | "REVOKED"
+      api_client_type: "INSTITUTION" | "PLATFORM"
       catalog_status: "ACTIVE" | "INACTIVE"
       credential_event_type:
         | "CREATED"
@@ -864,6 +907,7 @@ export const Constants = {
   public: {
     Enums: {
       api_client_status: ["ACTIVE", "SUSPENDED", "REVOKED"],
+      api_client_type: ["INSTITUTION", "PLATFORM"],
       catalog_status: ["ACTIVE", "INACTIVE"],
       credential_event_type: [
         "CREATED",

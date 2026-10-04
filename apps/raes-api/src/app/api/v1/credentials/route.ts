@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server";
-import { z } from "zod";
+import { createCredentialSchema } from "@/lib/credential-input";
+import { listCredentials } from "@/lib/credential-read";
+import { ApiError, authorize, fail, readBody, route } from "@/lib/api";
 
 import { supabase } from "@/lib/supabase";
 
@@ -8,173 +10,206 @@ import type {
   Json,
 } from "@/types/database";
 
-const createCredentialSchema = z.object({
-  institutionId: z.string().uuid(),
+export const runtime = "nodejs";
 
-  personId: z.string().uuid(),
-
-  credentialTypeId: z.string().uuid(),
-
-  programId: z.string().uuid().optional(),
-
-  credentialNumber: z
-    .string()
-    .trim()
-    .min(1)
-    .optional(),
-
-  externalReference: z
-    .string()
-    .trim()
-    .min(1)
-    .optional(),
-
-  title: z.string().trim().min(3),
-
-  description: z
-    .string()
-    .trim()
-    .optional(),
-
-  issuedAt: z.string().date(),
-
-  validFrom: z.string().date().optional(),
-
-  validUntil: z.string().date().optional(),
-
-  sourceType: z
-    .enum([
-      "INSTITUTION_API",
-      "ADMIN",
-      "MIGRATION",
-      "SYSTEM",
-    ])
-    .default("ADMIN"),
-
-  registeredByApiClientId: z
-    .string()
-    .uuid()
-    .optional(),
-
-  registeredByReference: z
-    .string()
-    .trim()
-    .optional(),
-
-  documentHashSha256: z
-    .string()
-    .regex(/^[a-fA-F0-9]{64}$/)
-    .optional(),
-
-  metadata: z
-    .record(z.string(), z.unknown())
-    .optional(),
-});
-
-const statusSchema = z.enum([
-  "ACTIVE",
-  "REVOKED",
-  "VOIDED",
-]);
-
-export async function POST(request: Request) {
+export const POST = route(async (request: Request) => {
+  const client = await authorize(request, "credentials:write", true);
   try {
-    const body = await request.json();
+    /*
+     * 4. Validamos los datos enviados.
+     *
+     * IMPORTANTE:
+     *
+     * El request NO contiene institutionId.
+     *
+     * La institución se determina automáticamente
+     * a partir de la API Key autenticada.
+     */
+    const body =
+      await readBody(request);
 
-    const validation = createCredentialSchema.safeParse(body);
+    const validation =
+      createCredentialSchema.safeParse(
+        body,
+      );
 
     if (!validation.success) {
       return NextResponse.json(
         {
-          error: "INVALID_REQUEST",
-          message: "Los datos enviados no son válidos",
-          details: validation.error.flatten(),
+          error:
+            "INVALID_REQUEST",
+
+          message:
+            "Los datos enviados no son válidos",
+
+          details:
+            validation.error.flatten(),
         },
         { status: 400 },
       );
     }
 
-    const input = validation.data;
+    const input =
+      validation.data;
 
-    const rpcParams: Database["public"]["Functions"]["create_credential"]["Args"] =
-      {
-        p_institution_id: input.institutionId,
-        p_person_id: input.personId,
-        p_credential_type_id: input.credentialTypeId,
-        p_title: input.title,
-        p_issued_at: input.issuedAt,
-      };
+    /*
+     * 5. Construimos los parámetros para
+     * la función transaccional de PostgreSQL.
+     */
+    const rpcParams: Database[
+      "public"
+    ]["Functions"][
+      "create_credential"
+    ]["Args"] = {
+      /*
+       * NO viene del body.
+       *
+       * La institución sale directamente
+       * de la API Key.
+       */
+      p_institution_id:
+        client.institutionId!,
+
+      p_person_id:
+        input.personId,
+
+      p_credential_type_id:
+        input.credentialTypeId,
+
+      p_title:
+        input.title,
+
+      p_issued_at:
+        input.issuedAt,
+
+      /*
+       * Tampoco permitimos que el cliente
+       * diga cuál fue la procedencia.
+       *
+       * RAES sabe que esta operación vino
+       * desde una integración institucional.
+       */
+      p_source_type:
+        "INSTITUTION_API",
+
+      /*
+       * La trazabilidad también la obtiene
+       * RAES automáticamente.
+       */
+      p_registered_by_api_client_id:
+        client.id,
+
+      p_registered_by_reference:
+        client.name,
+    };
+
+    /*
+     * Campos opcionales.
+     */
 
     if (input.programId) {
-      rpcParams.p_program_id = input.programId;
+      rpcParams.p_program_id =
+        input.programId;
     }
 
-    if (input.credentialNumber) {
+    if (
+      input.credentialNumber
+    ) {
       rpcParams.p_credential_number =
         input.credentialNumber;
     }
 
-    if (input.externalReference) {
+    if (
+      input.externalReference
+    ) {
       rpcParams.p_external_reference =
         input.externalReference;
     }
 
     if (input.description) {
-      rpcParams.p_description = input.description;
+      rpcParams.p_description =
+        input.description;
     }
 
     if (input.validFrom) {
-      rpcParams.p_valid_from = input.validFrom;
+      rpcParams.p_valid_from =
+        input.validFrom;
     }
 
     if (input.validUntil) {
-      rpcParams.p_valid_until = input.validUntil;
+      rpcParams.p_valid_until =
+        input.validUntil;
     }
 
-    rpcParams.p_source_type = input.sourceType;
-
-    if (input.registeredByApiClientId) {
-      rpcParams.p_registered_by_api_client_id =
-        input.registeredByApiClientId;
-    }
-
-    if (input.registeredByReference) {
-      rpcParams.p_registered_by_reference =
-        input.registeredByReference;
-    }
-
-    if (input.documentHashSha256) {
+    if (
+      input.documentHashSha256
+    ) {
       rpcParams.p_document_hash_sha256 =
         input.documentHashSha256;
     }
 
     if (input.metadata) {
-      rpcParams.p_metadata = input.metadata as Json;
+      rpcParams.p_metadata =
+        input.metadata as Json;
     }
 
-    const { data, error } = await supabase.rpc(
+    /*
+     * 6. create_credential() ejecuta
+     * transaccionalmente:
+     *
+     * credentials INSERT
+     *        +
+     * credential_events INSERT
+     *
+     * Si cualquiera falla, toda la operación
+     * se revierte.
+     */
+    const {
+      data,
+      error,
+    } = await supabase.rpc(
       "create_credential",
       rpcParams,
     );
 
     if (error) {
-      console.error("Error creating credential:", error);
+      if (["INSUFFICIENT_SCOPE", "INVALID_ACTOR", "API_CLIENT_NOT_FOUND"].includes(error.message)) {
+        fail(403, error.message, "La integración no está autorizada para esta operación");
+      }
 
-      if (error.code === "23503") {
+      console.error("Error creating credential:");
+
+      /*
+       * Relaciones inexistentes.
+       */
+      if (
+        error.code === "23503"
+      ) {
         return NextResponse.json(
           {
-            error: "RELATED_RESOURCE_NOT_FOUND",
+            error:
+              "RELATED_RESOURCE_NOT_FOUND",
+
             message:
-              "La institución, persona, programa o tipo de credencial no existe",
+              "La persona, programa o tipo de credencial relacionado no existe",
           },
           { status: 404 },
         );
       }
 
-      if (error.code === "23505") {
+      /*
+       * credential_number o
+       * external_reference duplicado
+       * dentro de la misma institución.
+       */
+      if (
+        error.code === "23505"
+      ) {
         return NextResponse.json(
           {
-            error: "CREDENTIAL_ALREADY_EXISTS",
+            error:
+              "CREDENTIAL_ALREADY_EXISTS",
+
             message:
               "Ya existe una credencial con este número o referencia externa para la institución",
           },
@@ -182,10 +217,17 @@ export async function POST(request: Request) {
         );
       }
 
-      if (error.code === "23514") {
+      /*
+       * Restricciones CHECK.
+       */
+      if (
+        error.code === "23514"
+      ) {
         return NextResponse.json(
           {
-            error: "INVALID_CREDENTIAL_DATA",
+            error:
+              "INVALID_CREDENTIAL_DATA",
+
             message:
               "La credencial incumple una regla de negocio",
           },
@@ -193,200 +235,151 @@ export async function POST(request: Request) {
         );
       }
 
-      return NextResponse.json(
-        {
-          error: "DATABASE_ERROR",
-          message: "No fue posible registrar la credencial",
-        },
-        { status: 500 },
-      );
-    }
+      /*
+       * Validaciones internas de nuestra
+       * función PostgreSQL.
+       */
 
-    return NextResponse.json(
-      { data },
-      { status: 201 },
-    );
-  } catch (error) {
-    console.error(error);
-
-    return NextResponse.json(
-      {
-        error: "INTERNAL_SERVER_ERROR",
-        message: "Ocurrió un error inesperado",
-      },
-      { status: 500 },
-    );
-  }
-}
-
-export async function GET(request: Request) {
-  try {
-    const url = new URL(request.url);
-
-    const personId = url.searchParams.get("personId");
-    const institutionId =
-      url.searchParams.get("institutionId");
-    const status = url.searchParams.get("status");
-
-    const page = Math.max(
-      Number(url.searchParams.get("page") ?? "1"),
-      1,
-    );
-
-    const limit = Math.min(
-      Math.max(
-        Number(url.searchParams.get("limit") ?? "20"),
-        1,
-      ),
-      100,
-    );
-
-    const from = (page - 1) * limit;
-    const to = from + limit - 1;
-
-    let query = supabase
-      .from("credentials")
-      .select(
-        `
-          id,
-          credential_number,
-          external_reference,
-          title,
-          description,
-          issued_at,
-          valid_from,
-          valid_until,
-          status,
-          source_type,
-          registered_at_raes,
-          revoked_at,
-          revocation_reason,
-          voided_at,
-          void_reason,
-          created_at,
-          updated_at,
-
-          institution:institutions (
-            id,
-            name,
-            nit,
-            status
-          ),
-
-          person:persons (
-            id,
-            document_type,
-            document_number,
-            first_names,
-            last_names
-          ),
-
-          program:programs (
-            id,
-            code,
-            snies_code,
-            name,
-            academic_level,
-            status
-          ),
-
-          credential_type:credential_types (
-            id,
-            code,
-            name
-          )
-        `,
-        { count: "exact" },
-      )
-      .order("issued_at", { ascending: false })
-      .range(from, to);
-
-    if (personId) {
-      if (!z.string().uuid().safeParse(personId).success) {
-        return NextResponse.json(
-          {
-            error: "INVALID_PERSON_ID",
-            message: "El ID de la persona no es válido",
-          },
-          { status: 400 },
-        );
-      }
-
-      query = query.eq("person_id", personId);
-    }
-
-    if (institutionId) {
       if (
-        !z.string().uuid().safeParse(institutionId).success
+        error.message.includes(
+          "INSTITUTION_NOT_ACTIVE",
+        )
       ) {
         return NextResponse.json(
           {
-            error: "INVALID_INSTITUTION_ID",
+            error:
+              "INSTITUTION_NOT_ACTIVE",
+
             message:
-              "El ID de la institución no es válido",
+              "La institución no está activa",
           },
-          { status: 400 },
+          { status: 409 },
         );
       }
 
-      query = query.eq(
-        "institution_id",
-        institutionId,
-      );
-    }
-
-    if (status) {
-      const validation = statusSchema.safeParse(status);
-
-      if (!validation.success) {
+      if (
+        error.message.includes(
+          "CREDENTIAL_TYPE_NOT_ACTIVE",
+        )
+      ) {
         return NextResponse.json(
           {
-            error: "INVALID_CREDENTIAL_STATUS",
+            error:
+              "CREDENTIAL_TYPE_NOT_ACTIVE",
+
             message:
-              "El estado de la credencial no es válido",
+              "El tipo de credencial no está activo",
           },
-          { status: 400 },
+          { status: 409 },
         );
       }
 
-      query = query.eq("status", validation.data);
-    }
+      if (
+        error.message.includes(
+          "PROGRAM_NOT_ACTIVE_OR_NOT_IN_INSTITUTION",
+        )
+      ) {
+        return NextResponse.json(
+          {
+            error:
+              "INVALID_PROGRAM",
 
-    const { data, error, count } = await query;
+            message:
+              "El programa no está activo o no pertenece a la institución autenticada",
+          },
+          { status: 409 },
+        );
+      }
 
-    if (error) {
-      console.error(error);
+      if (
+        error.message.includes(
+          "API_CLIENT_NOT_ACTIVE",
+        )
+      ) {
+        return NextResponse.json(
+          {
+            error:
+              "API_CLIENT_NOT_ACTIVE",
+
+            message:
+              "La integración institucional no está activa",
+          },
+          { status: 403 },
+        );
+      }
+
+      if (
+        error.message.includes(
+          "API_CLIENT_EXPIRED",
+        )
+      ) {
+        return NextResponse.json(
+          {
+            error:
+              "API_CLIENT_EXPIRED",
+
+            message:
+              "La integración institucional ha expirado",
+          },
+          { status: 403 },
+        );
+      }
+
+      if (
+        error.message.includes(
+          "API_CLIENT_INSTITUTION_MISMATCH",
+        )
+      ) {
+        return NextResponse.json(
+          {
+            error:
+              "API_CLIENT_INSTITUTION_MISMATCH",
+
+            message:
+              "La integración no pertenece a la institución indicada",
+          },
+          { status: 403 },
+        );
+      }
 
       return NextResponse.json(
         {
-          error: "DATABASE_ERROR",
+          error:
+            "DATABASE_ERROR",
+
           message:
-            "No fue posible consultar las credenciales",
+            "No fue posible registrar la credencial",
         },
         { status: 500 },
       );
     }
 
-    return NextResponse.json({
-      data,
-      pagination: {
-        page,
-        limit,
-        total: count ?? 0,
-        totalPages: Math.ceil(
-          (count ?? 0) / limit,
-        ),
+    /*
+     * 7. Credencial creada.
+     */
+    return NextResponse.json(
+      {
+        data,
       },
-    });
+      {
+        status: 201,
+      },
+    );
   } catch (error) {
-    console.error(error);
+    if (error instanceof ApiError) throw error;
+    console.error("Unexpected error:");
 
     return NextResponse.json(
       {
-        error: "INTERNAL_SERVER_ERROR",
-        message: "Ocurrió un error inesperado",
+        error:
+          "INTERNAL_SERVER_ERROR",
+
+        message:
+          "Ocurrió un error inesperado",
       },
       { status: 500 },
     );
   }
-}
+});
+
+export const GET = route(listCredentials);

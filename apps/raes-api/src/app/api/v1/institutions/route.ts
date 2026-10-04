@@ -1,122 +1,14 @@
-import { NextResponse } from "next/server";
-import { z } from "zod";
-
+import { admin, adminOrInstitution, collection, dbError, json, manage, pagination, parse, readBody, route } from "@/lib/api";
+import { institutionData, institutionSchema } from "@/lib/institution-input";
 import { supabase } from "@/lib/supabase";
-
-const createInstitutionSchema = z.object({
-  name: z.string().trim().min(3),
-  nit: z.string().trim().min(5),
-  verificationDigit: z.string().length(1).optional(),
-  institutionType: z.string().trim().optional(),
+export const POST = route(async (request: Request) => {
+  admin(request); const input = parse(institutionSchema, await readBody(request));
+  return json(await manage("institution", "create", institutionData(input)), 201);
 });
-
-export async function POST(request: Request) {
-  try {
-    const body = await request.json();
-
-    const result = createInstitutionSchema.safeParse(body);
-
-    if (!result.success) {
-      return NextResponse.json(
-        {
-          error: "INVALID_REQUEST",
-          message: "Los datos enviados no son válidos",
-          details: result.error.flatten(),
-        },
-        { status: 400 },
-      );
-    }
-
-    const {
-      name,
-      nit,
-      verificationDigit,
-      institutionType,
-    } = result.data;
-
-    const { data, error } = await supabase
-      .from("institutions")
-      .insert({
-        name,
-        nit,
-        verification_digit: verificationDigit,
-        institution_type: institutionType,
-      })
-      .select()
-      .single();
-
-    if (error) {
-  console.error("Error creating institution:", error);
-
-  if (error.code === "23505") {
-    return NextResponse.json(
-      {
-        error: "INSTITUTION_ALREADY_EXISTS",
-        message: "Ya existe una institución registrada con este NIT",
-      },
-      { status: 409 },
-    );
-  }
-
-  return NextResponse.json(
-    {
-      error: "DATABASE_ERROR",
-      message: "No fue posible registrar la institución",
-    },
-    { status: 500 },
-  );
-}
-
-    return NextResponse.json(
-      {
-        data,
-      },
-      { status: 201 },
-    );
-  } catch (error) {
-    console.error("Unexpected error:", error);
-
-    return NextResponse.json(
-      {
-        error: "INTERNAL_SERVER_ERROR",
-        message: "Ocurrió un error inesperado",
-      },
-      { status: 500 },
-    );
-  }
-}
-
-export async function GET() {
-  try {
-    const { data, error } = await supabase
-      .from("institutions")
-      .select("*")
-      .order("created_at", { ascending: false });
-
-    if (error) {
-      console.error("Error fetching institutions:", error);
-
-      return NextResponse.json(
-        {
-          error: "DATABASE_ERROR",
-          message: "No fue posible consultar las instituciones",
-        },
-        { status: 500 },
-      );
-    }
-
-    return NextResponse.json({
-      data,
-    });
-  } catch (error) {
-    console.error("Unexpected error:", error);
-
-    return NextResponse.json(
-      {
-        error: "INTERNAL_SERVER_ERROR",
-        message: "Ocurrió un error inesperado",
-      },
-      { status: 500 },
-    );
-  }
-}
+export const GET = route(async (request: Request) => {
+  const client = await adminOrInstitution(request); const paging = pagination(request);
+  let query = supabase.from("institutions").select("id,name,nit,verification_digit,institution_type,status,created_at,updated_at", { count: "exact" })
+    .order("created_at", { ascending: false }).order("id").range(paging.from, paging.to);
+  if (client) query = query.eq("id", client.institutionId!);
+  const { data, error, count } = await query; dbError(error); return collection(data, count, paging);
+});
